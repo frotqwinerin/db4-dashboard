@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banned Books Database Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .stats-bar {
+            background: #f5f5f5;
+            padding: 12px 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+        .stat-item { color: #666; }
+        .stat-item strong { color: #000; }
+
+        .filter-controls {
+            background: #f5f5f5;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .filter-group {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 10px;
+        }
+        .filter-group label {
+            font-weight: 600;
+            margin-right: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        .filter-group select, .filter-group input {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .reset-btn {
+            padding: 6px 14px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            border-radius: 3px;
+        }
+        .reset-btn:hover { background: #f0f0f0; }
+
+        .table-wrapper {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-left">
+            <a href="index.html" class="navbar-brand">📚 Banned Books DB</a>
+            <ul class="navbar-links">
+                <li><a href="index.html" class="active">Database</a></li>
+                <li><a href="visualization.html">Visualization</a></li>
+                <li><a href="analysis.html">Analysis</a></li>
+            </ul>
+        </div>
+        <div class="navbar-right">
+            <button class="dark-mode-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
+                <span id="darkModeIcon">🌙</span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <h1>Malaysian Banned Books Database</h1>
+
+        <div id="uploadSection">
+        <div class="upload-zone" id="dropZone">
+            <p style="font-size: 48px; margin: 0;">📁</p>
+            <p><strong>Drag & Drop your CSV file here</strong></p>
+            <p style="color: #666;">or click to browse</p>
+            <input type="file" id="fileInput" accept=".csv">
+        </div>
+        <div style="text-align: center; margin-top: 15px;">
+            <button id="clearDataBtn" class="reset-btn" onclick="clearStoredData()" style="display: none;">Clear Stored Data</button>
+        </div>
+    </div>
+
+    <div id="contentArea" class="hidden">
+        <div class="stats-bar">
+            <span class="stat-item">Total Records: <strong id="totalRecords">0</strong></span>
+            <span class="stat-item">Filtered Records: <strong id="filteredRecords">0</strong></span>
+            <span class="stat-item">Categories: <strong id="categoriesCount">0</strong></span>
+            <span class="stat-item">Languages: <strong id="languagesCount">0</strong></span>
+            <button class="reset-btn" onclick="reloadDataPrompt()" style="margin-left: auto;">🔄 Reload New Data</button>
+        </div>
+
+        <div class="filter-controls">
+            <div class="filter-group">
+                <label for="searchFilter">Search:</label>
+                <input type="text" id="searchFilter" placeholder="Title, author, publisher..." style="width: 250px;">
+            </div>
+            <div class="filter-group">
+                <label for="languageFilter">Language:</label>
+                <select id="languageFilter">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <button class="reset-btn" onclick="resetFilters()">Reset</button>
+        </div>
+
+        <div class="filter-tabs" id="categoryTabs">
+            <!-- Category tabs will be populated here -->
+        </div>
+
+        <div class="table-wrapper">
+            <table class="videos-table" id="dataTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">No.</th>
+                        <th onclick="sortTable(1)">Title</th>
+                        <th onclick="sortTable(2)">Author</th>
+                        <th onclick="sortTable(3)">Publisher</th>
+                        <th onclick="sortTable(4)">Printer</th>
+                        <th onclick="sortTable(5)">Language</th>
+                        <th onclick="sortTable(6)">Category</th>
+                        <th onclick="sortTable(7)">Date</th>
+                        <th onclick="sortTable(8)">Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="9" style="text-align: center; padding: 50px; color: #999;">No data loaded</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Dark mode functionality
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            const isDarkMode = document.body.classList.contains('dark-mode');
+            document.getElementById('darkModeIcon').textContent = isDarkMode ? '☀️' : '🌙';
+            localStorage.setItem('darkMode', isDarkMode);
+        }
+
+        // Load dark mode preference on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const darkModePreference = localStorage.getItem('darkMode') === 'true';
+            if (darkModePreference) {
+                document.body.classList.add('dark-mode');
+                document.getElementById('darkModeIcon').textContent = '☀️';
+            }
+
+            // Check if data exists in localStorage and offer to load it
+            const storedData = localStorage.getItem('bannedBooksData');
+            if (storedData) {
+                try {
+                    allData = JSON.parse(storedData);
+                    if (allData.length > 0) {
+                        // Auto-load the stored data
+                        filteredData = [...allData];
+                        document.getElementById('uploadSection').style.display = 'none';
+                        document.getElementById('contentArea').classList.remove('hidden');
+                        populateFilters();
+                        populateCategoryTabs();
+                        updateStats();
+                        renderTable();
+                    }
+                } catch (e) {
+                    console.error('Error loading stored data:', e);
+                    localStorage.removeItem('bannedBooksData');
+                }
+            } else {
+                // No stored data, show clear button if needed
+                document.getElementById('clearDataBtn').style.display = 'none';
+            }
+        });
+
+        let allData = [];
+        let filteredData = [];
+        let currentSortColumn = -1;
+        let sortAscending = true;
+        let selectedCategory = '';
+
+        // Setup drag and drop
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.csv')) {
+                loadCSV(file);
+            } else {
+                alert('Please drop a CSV file');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadCSV(file);
+            }
+        });
+
+        function loadCSV(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                parseCSV(text);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            
+            allData = [];
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '') continue;
+                
+                const values = parseCSVLine(lines[i]);
+                const row = {};
+                headers.forEach((header, index) => {
+                    row[header] = values[index] || '';
+                });
+                allData.push(row);
+            }
+
+            filteredData = [...allData];
+            
+            // Save data to localStorage for use in other pages
+            try {
+                localStorage.setItem('bannedBooksData', JSON.stringify(allData));
+            } catch (e) {
+                console.error('Error saving data to localStorage:', e);
+            }
+            
+            // Show content area
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('contentArea').classList.remove('hidden');
+            
+            // Populate filters
+            populateFilters();
+            populateCategoryTabs();
+            updateStats();
+            renderTable();
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const nextChar = line[i + 1];
+                
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        function populateCategoryTabs() {
+            const categories = [...new Set(allData.map(row => row.Category || 'Not Available'))].sort();
+            const tabsContainer = document.getElementById('categoryTabs');
+            
+            // Add "All" tab
+            const allTab = document.createElement('div');
+            allTab.className = 'filter-tab active';
+            allTab.textContent = `All (${allData.length})`;
+            allTab.onclick = () => selectCategory('');
+            tabsContainer.appendChild(allTab);
+
+            // Add category tabs
+            categories.forEach(cat => {
+                const count = allData.filter(row => (row.Category || 'Not Available') === cat).length;
+                const tab = document.createElement('div');
+                tab.className = 'filter-tab';
+                tab.textContent = `${cat} (${count})`;
+                tab.onclick = () => selectCategory(cat);
+                tabsContainer.appendChild(tab);
+            });
+        }
+
+        function selectCategory(category) {
+            selectedCategory = category;
+            
+            // Update active tab
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            applyFilters();
+        }
+
+        function populateFilters() {
+            // Get unique languages
+            const languages = [...new Set(allData.map(row => row.Language).filter(l => l))].sort();
+            const languageSelect = document.getElementById('languageFilter');
+            languageSelect.innerHTML = '<option value="">All</option>';
+            languages.forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang;
+                option.textContent = lang;
+                languageSelect.appendChild(option);
+            });
+
+            // Add event listeners
+            document.getElementById('languageFilter').addEventListener('change', applyFilters);
+            document.getElementById('searchFilter').addEventListener('input', applyFilters);
+        }
+
+        function applyFilters() {
+            const languageFilter = document.getElementById('languageFilter').value;
+            const searchTerm = document.getElementById('searchFilter').value.toLowerCase();
+
+            filteredData = allData.filter(row => {
+                const categoryMatch = !selectedCategory || (row.Category || 'Not Available') === selectedCategory;
+                const languageMatch = !languageFilter || row.Language === languageFilter;
+                const searchMatch = !searchTerm || 
+                    (row['Tajuk Penerbitan'] || '').toLowerCase().includes(searchTerm) ||
+                    (row['Pengarang / Penterjemah'] || '').toLowerCase().includes(searchTerm) ||
+                    (row.Penerbit || '').toLowerCase().includes(searchTerm);
+
+                return categoryMatch && languageMatch && searchMatch;
+            });
+
+            updateStats();
+            renderTable();
+        }
+
+        function resetFilters() {
+            selectedCategory = '';
+            document.getElementById('languageFilter').value = '';
+            document.getElementById('searchFilter').value = '';
+            
+            // Reset active tab
+            document.querySelectorAll('.filter-tab').forEach((tab, index) => {
+                tab.classList.remove('active');
+                if (index === 0) tab.classList.add('active');
+            });
+            
+            filteredData = [...allData];
+            updateStats();
+            renderTable();
+        }
+
+        function updateStats() {
+            document.getElementById('totalRecords').textContent = allData.length;
+            document.getElementById('filteredRecords').textContent = filteredData.length;
+            document.getElementById('categoriesCount').textContent = 
+                new Set(filteredData.map(row => row.Category || 'Not Available')).size;
+            document.getElementById('languagesCount').textContent = 
+                new Set(filteredData.map(row => row.Language).filter(l => l)).size;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 50px; color: #999;">No records match your filters</td></tr>';
+                return;
+            }
+
+            filteredData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="number-cell">${index + 1}</td>
+                    <td class="video-title">${row['Tajuk Penerbitan'] || '-'}</td>
+                    <td>${row['Pengarang / Penterjemah'] || '-'}</td>
+                    <td>${row.Penerbit || '-'}</td>
+                    <td>${row.Pencetak || '-'}</td>
+                    <td>${row.Language || '-'}</td>
+                    <td>${row.Category || 'Not Available'}</td>
+                    <td>${row['Tarikh Warta / No Warta'] || '-'}</td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">${row.Notes || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function sortTable(columnIndex) {
+            const headerLabels = ['No.', 'Title', 'Author', 'Publisher', 'Printer', 'Language', 'Category', 'Date', 'Notes'];
+            const columnKeys = ['No.', 'Tajuk Penerbitan', 'Pengarang / Penterjemah', 'Penerbit', 
+                           'Pencetak', 'Language', 'Category', 'Tarikh Warta / No Warta', 'Notes'];
+            const columnName = columnKeys[columnIndex];
+
+            // Toggle sort direction if clicking same column
+            if (currentSortColumn === columnIndex) {
+                sortAscending = !sortAscending;
+            } else {
+                sortAscending = true;
+                currentSortColumn = columnIndex;
+            }
+
+            // Update header indicators - remove all sort indicators first
+            document.querySelectorAll('th').forEach((th, idx) => {
+                th.classList.remove('sorted');
+                th.textContent = headerLabels[idx]; // Reset to original label
+            });
+            
+            // Add indicator to current sorted column
+            const th = document.querySelectorAll('th')[columnIndex];
+            th.classList.add('sorted');
+            th.textContent = headerLabels[columnIndex] + (sortAscending ? ' ▲' : ' ▼');
+
+            // Sort the data
+            filteredData.sort((a, b) => {
+                let aVal, bVal;
+                
+                if (columnIndex === 0) {
+                    return 0; // Don't sort by row number
+                } else if (columnIndex === 7) {
+                    // Special handling for date column
+                    aVal = parseDateForSort(a[columnName]);
+                    bVal = parseDateForSort(b[columnName]);
+                } else {
+                    aVal = (a[columnName] || '').toString().toLowerCase();
+                    bVal = (b[columnName] || '').toString().toLowerCase();
+                }
+
+                if (aVal < bVal) return sortAscending ? -1 : 1;
+                if (aVal > bVal) return sortAscending ? 1 : -1;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        function parseDateForSort(dateStr) {
+            if (!dateStr) return 0;
+            
+            // Handle format like "27/4/1951" or "27/4/1951 - additional text"
+            const datePart = dateStr.split(/[\s-]/)[0].trim();
+            const parts = datePart.split('/');
+            
+            if (parts.length === 3) {
+                const day = parseInt(parts[0]) || 0;
+                const month = parseInt(parts[1]) || 0;
+                const year = parseInt(parts[2]) || 0;
+                
+                // Convert to sortable number: YYYYMMDD
+                return year * 10000 + month * 100 + day;
+            }
+            
+            return 0;
+
+            renderTable();
+        }
+
+        function clearStoredData() {
+            if (confirm('Are you sure you want to clear all stored data? This will remove the data from all pages.')) {
+                localStorage.removeItem('bannedBooksData');
+                allData = [];
+                filteredData = [];
+                document.getElementById('uploadSection').style.display = 'block';
+                document.getElementById('contentArea').classList.add('hidden');
+                document.getElementById('clearDataBtn').style.display = 'none';
+                alert('Data cleared successfully!');
+            }
+        }
+
+        function reloadDataPrompt() {
+            if (confirm('Load new data? This will replace your current dataset.')) {
+                document.getElementById('uploadSection').style.display = 'block';
+                document.getElementById('contentArea').classList.add('hidden');
+                document.getElementById('fileInput').value = '';
+            }
+        }
+    </script>
+    </div> <!-- End main-content -->
+</body>
+</html>
